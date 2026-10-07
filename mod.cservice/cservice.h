@@ -41,6 +41,7 @@
 #include "EConfig.h"
 #include "cservice_config.h"
 #include "cservice_confvars.h"
+#include "sqlIncompleteChannel.h"
 #include "cservice_crypt.h"
 #include "cserviceCommands.h"
 #include "sqlChannel.h"
@@ -693,6 +694,31 @@ class cservice : public xClient {
     bool AcceptChannel(unsigned int, const string&);
     bool sqlRegisterChannel(iClient*, sqlUser*, const string&);
     bool wipeChannel(unsigned int);
+
+    /* Channel registration on IRC (REGISTER steps), from gnuworld-enhanced. */
+    /* Applications still being filled in, by manager (user) id. */
+    typedef map<unsigned int, sqlIncompleteChannel*> incompleteChanRegsType;
+    incompleteChanRegsType incompleteChanRegs;
+    /* loadIncompleteChanRegs() (declared below) loads incoming applications without supporters. */
+    /* Forget the incomplete application of this manager, if any. */
+    void removeIncompleteChanReg(unsigned int userId);
+    /* May this user apply for a channel? Sets validResponseString when not. */
+    bool isValidApplicant(sqlUser*);
+    /* May this user support an application? Sets validResponseString when not. */
+    bool isValidSupporter(const string&);
+    /* Id of an unregistered (pending) channel record, or 0. */
+    unsigned int getPendingChanId(const string&);
+    /* An open application (status 0, 1, 2 or 8) for this channel? */
+    struct openApplication {
+        unsigned int chanId;
+        unsigned int managerId;
+        int status;
+        string chanName;
+    };
+    bool findOpenApplication(const string& chanName, openApplication& app);
+    /* Close an application: set its status and decision, and drop it from memory. */
+    bool closeApplication(const openApplication& app, int status, const string& decision,
+                          sqlUser* reviewer);
     void checkValidUsersAndChannelsState();
     void checkNewIncomings();
     void checkTrafficPass();

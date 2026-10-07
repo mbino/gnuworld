@@ -18,6 +18,7 @@ libcservice_la_SOURCES = \
 	mod.cservice/sqlLevel.cc \
 	mod.cservice/sqlBan.cc \
 	mod.cservice/sqlPendingChannel.cc \
+	mod.cservice/sqlIncompleteChannel.cc \
 	mod.cservice/sqlPendingTraffic.cc \
 	mod.cservice/csGline.cc \
 	mod.cservice/ACCESSCommand.cc \
@@ -60,6 +61,10 @@ libcservice_la_SOURCES = \
 	mod.cservice/SCANUNAMECommand.cc \
 	mod.cservice/SCANEMAILCommand.cc \
 	mod.cservice/SCANCommand.cc \
+	mod.cservice/ACCEPTCommand.cc \
+	mod.cservice/REJECTCommand.cc \
+	mod.cservice/CANCELCommand.cc \
+	mod.cservice/OBJECTCommand.cc \
 	mod.cservice/SEARCHCommand.cc \
 	mod.cservice/SERVNOTICECommand.cc \
 	mod.cservice/SETCommand.cc \

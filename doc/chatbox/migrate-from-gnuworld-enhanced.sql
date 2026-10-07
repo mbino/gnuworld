@@ -29,6 +29,8 @@ ALTER TABLE users ALTER COLUMN flags SET DEFAULT 0;
 UPDATE users SET flags = (flags & ~2048) | 65536 WHERE flags & 2048 <> 0;
 UPDATE users SET flags = flags & ~4096 WHERE flags & 4096 <> 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS scram_record text;
+-- Account age checks use signup_ts; gnuworld-enhanced kept it in created_ts for some users.
+UPDATE users SET signup_ts = created_ts WHERE signup_ts IS NULL AND created_ts IS NOT NULL;
 
 -- 3. New columns.
 ALTER TABLE channels ADD COLUMN IF NOT EXISTS limit_joinmax integer DEFAULT 3;

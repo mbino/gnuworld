@@ -80,7 +80,8 @@
  * entries are in the SQL table.  Default setting allows login from any IP
  * if there are no entries for the username in the SQL table.
  */
-#define IPR_DEFAULT_REJECT
+/* ChatBox.nu: no IP restrictions required, admins without entries may log in from any IP. */
+#undef IPR_DEFAULT_REJECT
 
 /**
  * Define this if you want TOTP authentication, note you must have liboath

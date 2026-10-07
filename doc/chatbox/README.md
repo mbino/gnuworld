@@ -7,6 +7,12 @@ This fork is Undernet's GNUworld with the ChatBox.nu changes on branch `chatbox`
   `cservice.conf`.
 - The nick protection needs an ircd that lets SVSNICK past its nick flood limit. ChatBox.nu runs
   `mbino/nefarious2`, which has that patch (`s_user.c`).
+- Channel applications on IRC, ported from gnuworld-enhanced: `REGISTER <#channel>` steps (REALNAME,
+  DESCRIPTION, SUPPORTERS) when `required_supporters` is above 0, and `ACCEPT`, `REJECT`, `CANCEL`,
+  `OBJECT`. With `required_supporters = 0`, `REGISTER <#channel>` registers right away. Settings
+  `min_days_before_reg`, `min_days_before_support` and `max_concurrent_supports` in `cservice.conf`.
+- No IP restrictions required: `IPR_DEFAULT_REJECT` is off in `mod.cservice/cservice_config.h`, so
+  admins without IP restriction entries can log in from any address.
 
 ## Build on AlmaLinux 9
 

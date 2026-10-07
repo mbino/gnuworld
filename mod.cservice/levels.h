@@ -89,6 +89,9 @@ const int scanemail = 600;
 const int whitelist = 750;
 const int whitelistadmin = 800;
 const int registercmd = 750;
+/* ACCEPT / REJECT channel applications on IRC. */
+const int accept = 750;
+const int reject = 750;
 /* Nick protection: SET NICKNAME <user> <nick> for another account. */
 const int nickset = 951;
 const int globalsuspend = 750;

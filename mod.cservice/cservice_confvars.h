@@ -55,6 +55,9 @@
     CONFIG_VAR(unsigned int, RequiredSupporters, "required_supporters")                            \
     CONFIG_VAR(unsigned int, nickProtection, "nick_protection")                                    \
     CONFIG_VAR(unsigned int, nickProtMaxLen, "nick_protection_maxlen")                             \
+    CONFIG_VAR(unsigned int, MinDaysBeforeReg, "min_days_before_reg")                              \
+    CONFIG_VAR(unsigned int, MinDaysBeforeSupport, "min_days_before_support")                      \
+    CONFIG_VAR(unsigned int, MaxConcurrentSupports, "max_concurrent_supports")                     \
     CONFIG_VAR(unsigned int, JudgeDaySeconds, "judge_day_seconds")                                 \
     CONFIG_VAR(unsigned int, NoRegDaysOnNOSupport, "noreg_days_on_nosupport")                      \
     CONFIG_VAR(unsigned int, RejectAppOnUserFraud, "reject_app_on_userfraud")                      \

@@ -265,7 +265,12 @@ cservice::cservice(const string& args)
     RegisterCommand(new SCANEMAILCommand(this, "SCANEMAIL", "<mask> [-all]", 10));
     RegisterCommand(new SCANCommand(this, "SCAN", "NICK <nickname>", 5));
     RegisterCommand(new REMIGNORECommand(this, "REMIGNORE", "<mask>", 5));
-    RegisterCommand(new REGISTERCommand(this, "REGISTER", "<#channel>", 8));
+    RegisterCommand(new REGISTERCommand(this, "REGISTER",
+                                        "<#channel> [REALNAME|DESCRIPTION|SUPPORTERS ...]", 8));
+    RegisterCommand(new ACCEPTCommand(this, "ACCEPT", "<#channel> <decision>", 8));
+    RegisterCommand(new REJECTCommand(this, "REJECT", "<#channel> <reason>", 8));
+    RegisterCommand(new CANCELCommand(this, "CANCEL", "<#channel> YES", 5));
+    RegisterCommand(new OBJECTCommand(this, "OBJECT", "<#channel> <reason>", 5));
     RegisterCommand(new REMOVEALLCommand(this, "REMOVEALL", "<#channel>", 15));
     RegisterCommand(new PURGECommand(this, "PURGE", "<#channel> [-noop] <reason>", 8));
     RegisterCommand(new FORCECommand(this, "FORCE", "<#channel>", 8));
@@ -393,6 +398,7 @@ cservice::cservice(const string& args)
 
     /* Preload any user accounts we want to */
     preloadUserCache();
+    loadIncompleteChanRegs();
 
     /* Preload fingerprints */
     preloadFingerprintCache();
@@ -415,6 +421,11 @@ cservice::cservice(const string& args)
 }
 
 cservice::~cservice() {
+    for (incompleteChanRegsType::iterator ptr = incompleteChanRegs.begin();
+         ptr != incompleteChanRegs.end(); ++ptr)
+        delete ptr->second;
+    incompleteChanRegs.clear();
+
     delete cserviceConfig;
     cserviceConfig = 0;
     delete SQLDb;
@@ -3889,6 +3900,11 @@ void cservice::checkNewIncomings() {
             for (unsigned int i = 0; i < rejectList.size(); i++) {
                 sqlUser* mgrUsr = getUserRecord(rejectList[i].second);
                 reason = "Failed supporters confirmation.";
+                /* An application still being filled in on IRC expired unfinished. */
+                if (mgrUsr && incompleteChanRegs.count(mgrUsr->getID())) {
+                    removeIncompleteChanReg(mgrUsr->getID());
+                    reason = "Failed to enumerate all required parameters for channel application";
+                }
                 RejectChannel(rejectList[i].first.first, reason);
                 NoteAllAuthedClients(
                     mgrUsr, "Your channel application of %s has been rejected with reason: %s",
@@ -9553,6 +9569,183 @@ iClient::flagType cservice::makeAccountFlags(sqlUser::flagType existingFlags) co
             retMe |= xFlag;
 
     return retMe;
+}
+
+/*
+ * Channel registration on IRC (from Seven's gnuworld-enhanced, ported for ChatBox.nu).
+ */
+void cservice::loadIncompleteChanRegs() {
+    /* Incoming applications (status 0) without supporters are still being filled in. */
+    stringstream theQuery;
+    theQuery << "SELECT pending.channel_id,channels.name,pending.manager_id,pending.managername,"
+             << "pending.description FROM pending,channels WHERE channels.id = pending.channel_id "
+             << "AND pending.status = 0 AND NOT EXISTS (SELECT 1 FROM supporters WHERE "
+             << "supporters.channel_id = pending.channel_id)" << ends;
+
+    if (!SQLDb->Exec(theQuery, true)) {
+        LOGSQL_ERROR(SQLDb);
+        return;
+    }
+    for (unsigned int i = 0; i < SQLDb->Tuples(); i++) {
+        sqlIncompleteChannel* newApp = new (std::nothrow) sqlIncompleteChannel(SQLDb);
+        assert(newApp != 0);
+        newApp->chanId = atoi(SQLDb->GetValue(i, 0));
+        newApp->chanName = SQLDb->GetValue(i, 1);
+        unsigned int mngrId = atoi(SQLDb->GetValue(i, 2));
+        newApp->RealName = SQLDb->GetValue(i, 3);
+        newApp->Description = SQLDb->GetValue(i, 4);
+        if (!incompleteChanRegs.insert(incompleteChanRegsType::value_type(mngrId, newApp)).second)
+            delete newApp;
+    }
+}
+
+void cservice::removeIncompleteChanReg(unsigned int userId) {
+    incompleteChanRegsType::iterator ptr = incompleteChanRegs.find(userId);
+    if (ptr == incompleteChanRegs.end())
+        return;
+    delete ptr->second;
+    incompleteChanRegs.erase(ptr);
+}
+
+unsigned int cservice::getPendingChanId(const string& chanName) {
+    stringstream theQuery;
+    theQuery << "SELECT id FROM channels WHERE lower(name) = '"
+             << escapeSQLChars(string_lower(chanName)) << "' AND registered_ts = 0" << ends;
+    if (!SQLDb->Exec(theQuery, true)) {
+        LOGSQL_ERROR(SQLDb);
+        return 0;
+    }
+    if (SQLDb->Tuples() > 0)
+        return atoi(SQLDb->GetValue(0, 0));
+    return 0;
+}
+
+bool cservice::findOpenApplication(const string& chanName, openApplication& app) {
+    stringstream theQuery;
+    theQuery << "SELECT channels.id,pending.manager_id,pending.status,channels.name "
+             << "FROM channels,pending WHERE lower(channels.name) = '"
+             << escapeSQLChars(string_lower(chanName)) << "' AND channels.id = pending.channel_id"
+             << " AND channels.registered_ts = 0 AND pending.status IN (0,1,2,8)" << ends;
+    if (!SQLDb->Exec(theQuery, true)) {
+        LOGSQL_ERROR(SQLDb);
+        return false;
+    }
+    if (SQLDb->Tuples() == 0)
+        return false;
+    app.chanId = atoi(SQLDb->GetValue(0, 0));
+    app.managerId = atoi(SQLDb->GetValue(0, 1));
+    app.status = atoi(SQLDb->GetValue(0, 2));
+    app.chanName = SQLDb->GetValue(0, 3);
+    return true;
+}
+
+bool cservice::closeApplication(const openApplication& app, int status, const string& decision,
+                                sqlUser* reviewer) {
+    stringstream theQuery;
+    theQuery << "UPDATE pending SET status = " << status
+             << ", last_updated = date_part('epoch', CURRENT_TIMESTAMP)::int"
+             << ", decision_ts = date_part('epoch', CURRENT_TIMESTAMP)::int"
+             << ", decision = '" << escapeSQLChars(decision) << "'";
+    if (reviewer)
+        theQuery << ", reviewed = 'Y', reviewed_by_id = " << reviewer->getID();
+    theQuery << " WHERE channel_id = " << app.chanId << ends;
+    if (!SQLDb->Exec(theQuery)) {
+        LOGSQL_ERROR(SQLDb);
+        return false;
+    }
+
+    removeIncompleteChanReg(app.managerId);
+    pendingChannelListType::iterator ptr = pendingChannelList.find(app.chanName);
+    if (ptr != pendingChannelList.end()) {
+        delete ptr->second;
+        pendingChannelList.erase(ptr);
+    }
+    return true;
+}
+
+bool cservice::isValidSupporter(const string& suppUser) {
+    sqlUser* theUser = getUserRecord(suppUser);
+    if (!theUser) {
+        validResponseString = "INEXISTENT";
+        return false;
+    }
+    /* Must have logged in on IRC at least once. */
+    if (theUser->getLastIP().empty()) {
+        validResponseString = "NEVER_LOGGED";
+        return false;
+    }
+    if ((currentTime() - theUser->getSignupTS()) <
+        (time_t)(MinDaysBeforeSupport * JudgeDaySeconds)) {
+        validResponseString = "TOO_NEW";
+        return false;
+    }
+    /* Must have been seen within the last 21 days. */
+    if ((currentTime() - theUser->getLastSeen()) > (time_t)(21 * JudgeDaySeconds)) {
+        validResponseString = "SEEN_LONG_AGO";
+        return false;
+    }
+    /* Not supporting too many open applications already. */
+    stringstream theQuery;
+    theQuery << "SELECT COUNT(*) FROM users,channels,supporters,pending WHERE "
+             << "lower(users.user_name) = '" << escapeSQLChars(string_lower(suppUser))
+             << "' AND pending.channel_id = supporters.channel_id AND users.id = supporters.user_id"
+             << " AND channels.id = pending.channel_id AND channels.registered_ts = 0"
+             << " AND pending.status IN (0,1,2,8)" << ends;
+    if (!SQLDb->Exec(theQuery, true)) {
+        LOGSQL_ERROR(SQLDb);
+        validResponseString = "DATABASE_ERROR";
+        return false;
+    }
+    if ((SQLDb->Tuples() != 0) &&
+        (atoi(SQLDb->GetValue(0, 0)) >= (int)MaxConcurrentSupports)) {
+        validResponseString = "TOO_MANY_SUPPORTS";
+        return false;
+    }
+    return true;
+}
+
+bool cservice::isValidApplicant(sqlUser* theUser) {
+    if (!theUser)
+        return false;
+
+    if (theUser->getLastIP().empty()) {
+        validResponseString = "Target user must login to X on IRC to own a channel.";
+        return false;
+    }
+    if ((currentTime() - theUser->getSignupTS()) < (time_t)(MinDaysBeforeReg * JudgeDaySeconds)) {
+        validResponseString = "TOO_NEW";
+        return false;
+    }
+
+    /* Only one channel per manager. */
+    stringstream theQuery;
+    theQuery << "SELECT 1 FROM levels,channels WHERE channels.id = levels.channel_id AND "
+             << "channels.registered_ts > 0 AND levels.access = 500 AND levels.user_id = "
+             << theUser->getID() << ends;
+    if (!SQLDb->Exec(theQuery, true)) {
+        LOGSQL_ERROR(SQLDb);
+        validResponseString = "DATABASE_ERROR";
+        return false;
+    }
+    if (SQLDb->Tuples() != 0) {
+        validResponseString = "ALREADY_HAVE_CHAN";
+        return false;
+    }
+
+    /* And no other open application. */
+    theQuery.str("");
+    theQuery << "SELECT 1 FROM pending WHERE status IN (0,1,2,8) AND manager_id = "
+             << theUser->getID() << ends;
+    if (!SQLDb->Exec(theQuery, true)) {
+        LOGSQL_ERROR(SQLDb);
+        validResponseString = "DATABASE_ERROR";
+        return false;
+    }
+    if (SQLDb->Tuples() != 0) {
+        validResponseString = "ALREADY_HAVE_PENDINGCHAN";
+        return false;
+    }
+    return true;
 }
 
 /*
