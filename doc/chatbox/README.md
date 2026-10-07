@@ -27,7 +27,24 @@ CC=/opt/rh/gcc-toolset-13/root/usr/bin/gcc CXX=/opt/rh/gcc-toolset-13/root/usr/b
     ./configure --prefix=$HOME/gnuworld --with-pgconfig=/usr/bin/pg_config --with-libssl-lib=/usr/lib64 \
     --enable-modules=cservice,ccontrol,dronescan,openchanfix
 make && make install
+cp bin/server_command_map $HOME/gnuworld/bin/   # make install does not copy it
 ```
+
+Under systemd, run it as `./gnuworld -c`: without `-c` GNUworld forks into the background and
+systemd stops it. ChatBox.nu's unit:
+
+```
+[Service]
+User=gnuworld
+WorkingDirectory=/home/gnuworld/gnuworld/bin
+ExecStart=/usr/bin/bash -c "exec ./gnuworld -c"
+StandardOutput=null
+Restart=on-failure
+TimeoutStopSec=15
+```
+
+(`bash -c` because SELinux does not let systemd execute files in home directories directly; add
+`PartOf=ircd.service` to restart it together with the ircd.)
 
 ## Moving from gnuworld-enhanced
 
