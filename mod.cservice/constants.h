@@ -43,7 +43,7 @@ const std::string channel_fields =
 const std::string user_fields =
     "users.id,users.user_name,users.password,users.url,users.language_id,users.flags,users.last_"
     "updated_by,users.last_updated,users.signup_ts,users.email,users.maxlogins,users."
-    "verificationdata,users.totp_key,users.scram_record";
+    "verificationdata,users.totp_key,users.scram_record,users.nickname";
 const std::string level_fields =
     "channel_id,user_id,access,flags,suspend_expires,suspend_level,suspend_by,added,added_by,last_"
     "Modif,last_Modif_By,last_Updated,suspend_reason";

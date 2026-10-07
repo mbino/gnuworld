@@ -33,6 +33,7 @@
 #include <ctime>
 #include <cstdlib>
 #include <cstring>
+#include <random>
 #include <cstdarg>
 #include <chrono>
 
@@ -162,6 +163,7 @@ void cservice::OnAttach() {
     MyUplink->RegisterEvent(EVT_KILL, this);
     MyUplink->RegisterEvent(EVT_QUIT, this);
     MyUplink->RegisterEvent(EVT_NICK, this);
+    MyUplink->RegisterEvent(EVT_CHNICK, this);
     MyUplink->RegisterEvent(EVT_ACCOUNT, this);
     MyUplink->RegisterEvent(EVT_BURST_ACK, this);
     MyUplink->RegisterEvent(EVT_XQUERY, this);
@@ -261,6 +263,7 @@ cservice::cservice(const string& args)
         10));
     RegisterCommand(new SCANUNAMECommand(this, "SCANUNAME", "<mask> [-all]", 10));
     RegisterCommand(new SCANEMAILCommand(this, "SCANEMAIL", "<mask> [-all]", 10));
+    RegisterCommand(new SCANCommand(this, "SCAN", "NICK <nickname>", 5));
     RegisterCommand(new REMIGNORECommand(this, "REMIGNORE", "<mask>", 5));
     RegisterCommand(new REGISTERCommand(this, "REGISTER", "<#channel>", 8));
     RegisterCommand(new REMOVEALLCommand(this, "REMOVEALL", "<#channel>", 15));
@@ -4526,10 +4529,20 @@ void cservice::OnEvent(const eventType& theEvent, void* data1, void* data2, void
         break;
     }
     case EVT_BURST_ACK: {
-        //		iServer* theServer = static_cast< iServer* >( data1 );
-        //		if ( theServer == MyUplink->Uplink )
-        //			{
-        //			}
+        /* Nick protection: clients introduced during a burst were not checked yet. When our own
+         * uplink finished bursting, check everyone; otherwise only the clients of that server. */
+        iServer* theServer = static_cast<iServer*>(data1);
+        bool everyone = (theServer == MyUplink->getUplink());
+        for (xNetwork::const_clientIterator cItr = Network->clients_begin();
+             cItr != Network->clients_end(); ++cItr) {
+            iClient* tmpClient = cItr->second;
+            if (everyone || (theServer && tmpClient->getIntYY() == theServer->getIntYY()))
+                validateNickName(tmpClient);
+        }
+        break;
+    }
+    case EVT_CHNICK: {
+        validateNickName(static_cast<iClient*>(data1));
         break;
     }
     case EVT_QUIT:
@@ -4598,6 +4611,11 @@ void cservice::OnEvent(const eventType& theEvent, void* data1, void* data2, void
             } else
                 doCommonAuth(tmpUser);
         }
+
+        /* Nick protection; bursting clients are checked on EVT_BURST_ACK. */
+        iServer* nickServer = Network->findServer(tmpUser->getIntYY());
+        if (!this->getUplink()->isBursting() && nickServer && !nickServer->isBursting())
+            validateNickName(tmpUser);
         break;
     } // case EVT_NICK
     case EVT_GLINE: {
@@ -8918,6 +8936,29 @@ bool cservice::doCommonAuth(iClient* theClient, string username) {
     }
 
     /*
+     * Nick protection: AUTONICK gives the client its registered nickname. Someone else
+     * using it is renamed first; the ircd handles both SVSNICKs in order.
+     */
+    if (nickProtection && theUser->getFlag(sqlUser::F_AUTONICK) &&
+        !theUser->getNickName().empty() &&
+        string_lower(theClient->getNickName()) != string_lower(theUser->getNickName())) {
+        iClient* holder = Network->findNick(theUser->getNickName());
+        bool nickFree = true;
+        if (holder) {
+            sqlUser* holderUser = isAuthed(holder, false);
+            if (holder->getMode(iClient::MODE_SERVICES) || holderUser == theUser)
+                nickFree = false; /* a service, or the user's own other connection */
+            else if (generateNickName(holder))
+                Notice(holder, "You don't own that nick, your nick has been changed by force.");
+            else
+                nickFree = false;
+        }
+        if (nickFree)
+            MyUplink->Write("%s SN %s %s", getCharYY().c_str(), theClient->getCharYYXXX().c_str(),
+                            theUser->getNickName().c_str());
+    }
+
+    /*
      * Check they aren't banned < 75 in any chan.
      */
     for (const auto& theChan : theClient->channels()) {
@@ -9512,6 +9553,65 @@ iClient::flagType cservice::makeAccountFlags(sqlUser::flagType existingFlags) co
             retMe |= xFlag;
 
     return retMe;
+}
+
+/*
+ * Nick protection (from Seven's gnuworld-enhanced, ported for ChatBox.nu).
+ * A user may reserve one nickname (SET NICKNAME); anyone else using it is renamed
+ * with SVSNICK to <nick><4 digits>.
+ */
+std::string cservice::NickIsRegisteredTo(const std::string& Nick) {
+    stringstream theQuery;
+    theQuery << "SELECT user_name FROM users WHERE lower(nickname) = '"
+             << escapeSQLChars(string_lower(Nick)) << "'" << ends;
+
+    if (!SQLDb->Exec(theQuery, true)) {
+        LOGSQL_ERROR(SQLDb);
+        return std::string();
+    }
+    if (SQLDb->Tuples() > 0)
+        return SQLDb->GetValue(0, 0);
+    return std::string();
+}
+
+bool cservice::generateNickName(iClient* theClient) {
+    /* The ircd truncates an SVSNICK target to NICKLEN, and kills whoever already has the
+     * truncated nick: keep base + 4 digits within nick_protection_maxlen. */
+    unsigned int maxLen = (nickProtMaxLen < 6) ? 6 : nickProtMaxLen;
+    std::string baseNick = theClient->getNickName();
+    if (baseNick.length() > maxLen - 4)
+        baseNick = baseNick.substr(0, maxLen - 4);
+
+    static std::mt19937 rng(std::random_device{}());
+    std::uniform_int_distribution<int> digits(1000, 9999);
+
+    for (int tries = 0; tries < 50; ++tries) {
+        std::string genNick = baseNick + std::to_string(digits(rng));
+        if (!Network->findNick(genNick)) {
+            MyUplink->Write("%s SN %s %s", getCharYY().c_str(),
+                            theClient->getCharYYXXX().c_str(), genNick.c_str());
+            return true;
+        }
+    }
+    /* Never SVSNICK onto a nick in use: the ircd would kill that client. */
+    LOG(WARN, "Nick protection: no free nick found for {}", theClient->getNickName());
+    return false;
+}
+
+void cservice::validateNickName(iClient* theClient) {
+    if (!nickProtection || !theClient || theClient->getMode(iClient::MODE_SERVICES))
+        return;
+
+    std::string ownerUser = NickIsRegisteredTo(theClient->getNickName());
+    if (ownerUser.empty())
+        return;
+
+    sqlUser* theUser = isAuthed(theClient, false);
+    if (theUser && string_lower(theUser->getUserName()) == string_lower(ownerUser))
+        return;
+
+    generateNickName(theClient);
+    Notice(theClient, "You don't own that nick, your nick has been changed by force.");
 }
 
 } // namespace gnuworld

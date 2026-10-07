@@ -79,6 +79,117 @@ bool SETCommand::Exec(iClient* theClient, const string& Message) {
         // Look by user then.
         string option = string_upper(st[1]);
         string value = string_upper(st[2]);
+        /*
+         * Nick protection (from Seven's gnuworld-enhanced):
+         *   SET AUTONICK <ON|OFF>
+         *   SET NICKNAME <nick|OFF>
+         *   SET NICKNAME <user> <nick|OFF>   (level::nickset)
+         */
+        if (option == "AUTONICK") {
+            if (value == "ON") {
+                theUser->setFlag(sqlUser::F_AUTONICK);
+                theUser->commit(theClient);
+                bot->Notice(theClient, "Your AUTONICK setting is now ON.");
+                return true;
+            }
+            if (value == "OFF") {
+                theUser->removeFlag(sqlUser::F_AUTONICK);
+                theUser->commit(theClient);
+                bot->Notice(theClient, "Your AUTONICK setting is now OFF.");
+                return true;
+            }
+            bot->Notice(theClient,
+                        bot->getResponse(theUser, language::set_cmd_syntax_on_off,
+                                         string("value of %s must be ON or OFF"))
+                            .c_str(),
+                        option.c_str());
+            return true;
+        }
+
+        if ((option == "NICK") || (option == "NICKNAME")) {
+            sqlUser* targetUser = theUser;
+            string theNick = st[2];
+            bool adminSet = false;
+            if (st.size() > 3) {
+                /* SET NICKNAME <user> <nick>: only for level::nickset. */
+                if (bot->getAdminAccessLevel(theUser) < level::nickset) {
+                    bot->Notice(theClient,
+                                bot->getResponse(theUser, language::insuf_access,
+                                                 string("You have insufficient access to "
+                                                        "perform that command.")));
+                    return true;
+                }
+                adminSet = true;
+                targetUser = bot->getUserRecord(st[2]);
+                if (!targetUser) {
+                    bot->Notice(theClient,
+                                bot->getResponse(theUser, language::not_registered,
+                                                 string("The user %s doesn't appear to be "
+                                                        "registered."))
+                                    .c_str(),
+                                st[2].c_str());
+                    return true;
+                }
+                theNick = st[3];
+            }
+            bool notMe = (targetUser != theUser);
+
+            if (string_upper(theNick) == "OFF") {
+                targetUser->removeFlag(sqlUser::F_AUTONICK);
+                targetUser->setNickName("");
+                targetUser->commit(theClient);
+                if (notMe)
+                    bot->Notice(theClient, "Cleared the nickname of %s.",
+                                targetUser->getUserName().c_str());
+                else
+                    bot->Notice(theClient, "You have cleared your nickname.");
+                return true;
+            }
+
+            /* A valid IRC nick: letters, digits and []\`^{}|_- , not starting with a digit or
+             * '-', and short enough for the ircd (nick_protection_maxlen = its NICKLEN). */
+            static const string nickChars =
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789[]\\`^{}|_-";
+            if (theNick.length() < 2 || theNick.length() > bot->getConfnickProtMaxLen() ||
+                theNick.find_first_not_of(nickChars) != string::npos || isdigit(theNick[0]) ||
+                theNick[0] == '-') {
+                bot->Notice(theClient,
+                            "Invalid nickname: use 2 to %u letters, digits or []\\`^{}|_- "
+                            "(not starting with a digit or -).",
+                            bot->getConfnickProtMaxLen());
+                return true;
+            }
+
+            string owner = bot->NickIsRegisteredTo(theNick);
+            if (!owner.empty() && string_lower(owner) != string_lower(targetUser->getUserName())) {
+                bot->Notice(theClient, "Sorry, that nickname is already registered.");
+                return true;
+            }
+
+            /* Users can't take the user name of another account as their nick. */
+            sqlUser* nameOwner = bot->getUserRecord(theNick);
+            if (!adminSet && nameOwner && nameOwner != targetUser) {
+                bot->Notice(theClient,
+                            "Sorry, %s is the user name of another account.", theNick.c_str());
+                return true;
+            }
+
+            if (targetUser->getNickName().empty())
+                targetUser->setFlag(sqlUser::F_AUTONICK);
+            targetUser->setNickName(theNick);
+            targetUser->commit(theClient);
+            if (notMe)
+                bot->Notice(theClient, "Registered nickname %s to %s.", theNick.c_str(),
+                            targetUser->getUserName().c_str());
+            else
+                bot->Notice(theClient, "You have successfully registered nickname %s.",
+                            theNick.c_str());
+
+            /* Whoever uses the nick right now and isn't the owner loses it. */
+            bot->validateNickName(Network->findNick(theNick));
+            return true;
+        }
+
         if (option == "INVISIBLE") {
             if (value == "ON") {
                 theUser->setFlag(sqlUser::F_INVIS);

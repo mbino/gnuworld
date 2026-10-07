@@ -89,6 +89,8 @@ const int scanemail = 600;
 const int whitelist = 750;
 const int whitelistadmin = 800;
 const int registercmd = 750;
+/* Nick protection: SET NICKNAME <user> <nick> for another account. */
+const int nickset = 951;
 const int globalsuspend = 750;
 const int rehash_admin = 800;
 const int rehash_coder = 900;

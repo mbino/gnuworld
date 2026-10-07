@@ -53,6 +53,8 @@
     CONFIG_VAR(unsigned int, floodproRelaxTime, "floodpro_relaxtime")                              \
     CONFIG_VAR(unsigned int, MAXnotes, "max_notes")                                                \
     CONFIG_VAR(unsigned int, RequiredSupporters, "required_supporters")                            \
+    CONFIG_VAR(unsigned int, nickProtection, "nick_protection")                                    \
+    CONFIG_VAR(unsigned int, nickProtMaxLen, "nick_protection_maxlen")                             \
     CONFIG_VAR(unsigned int, JudgeDaySeconds, "judge_day_seconds")                                 \
     CONFIG_VAR(unsigned int, NoRegDaysOnNOSupport, "noreg_days_on_nosupport")                      \
     CONFIG_VAR(unsigned int, RejectAppOnUserFraud, "reject_app_on_userfraud")                      \

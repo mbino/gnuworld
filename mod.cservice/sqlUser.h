@@ -57,6 +57,8 @@ class sqlUser {
     static constexpr flagType F_CERT_DISABLE_TOTP = 0x2000;
     static constexpr flagType F_WEB_DISABLE_TOTP = 0x4000;
     static constexpr flagType F_AUTOHIDE = 0x8000;
+    // Nick protection: on login, change the client to the registered nickname.
+    static constexpr flagType F_AUTONICK = 0x10000;
     /*
      *   User 'Event' Flags, used in the userlog table.
      */
@@ -130,6 +132,7 @@ class sqlUser {
     inline const std::string& getTotpKey() const { return totp_key; }
 
     inline const std::string& getScramRecord() const { return scram_record; }
+    inline const std::string& getNickName() const { return nickname; }
 
     /*
      *  Methods to set data atrributes.
@@ -191,6 +194,7 @@ class sqlUser {
     inline void setTotpKey(const std::string& _totp_key) { totp_key = _totp_key; }
 
     inline void setScramRecord(const std::string& _scram_record) { scram_record = _scram_record; }
+    inline void setNickName(const std::string& _nickname) { nickname = _nickname; }
 
     /*
      * Method to perform a SQL 'UPDATE' and commit changes to this
@@ -242,6 +246,7 @@ class sqlUser {
     unsigned int failed_login_ts;
     std::string totp_key;
     std::string scram_record;
+    std::string nickname;
 
     Logger* logger;
     dbHandle* SQLDb;

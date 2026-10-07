@@ -52,7 +52,7 @@ sqlUser::sqlUser(cservice* _bot)
     : id(0), user_name(), password(), last_seen(0), url(), language_id(0), flags(0), last_used(0),
       instantiated_ts(::time(NULL)), signup_ts(0), email(), verifdata(), last_hostmask(),
       maxlogins(0), last_note(0), notes_sent(0), failed_logins(0), failed_login_ts(0),
-      scram_record(), logger(_bot->getLogger()), SQLDb(_bot->SQLDb) {}
+      scram_record(), nickname(), logger(_bot->getLogger()), SQLDb(_bot->SQLDb) {}
 
 /*
  *  Load all data for this user from the backend. (Key: userID)
@@ -137,6 +137,7 @@ void sqlUser::setAllMembers(int row) {
     failed_login_ts = 0;
     totp_key = SQLDb->GetValue(row, 12);
     scram_record = SQLDb->GetValue(row, 13);
+    nickname = SQLDb->GetValue(row, 14);
     /* Fetch the "Last Seen" time from the users_lastseen table. */
 }
 
@@ -164,7 +165,8 @@ bool sqlUser::commit(std::string last_updated_by) {
                 << "last_updated = date_part('epoch', CURRENT_TIMESTAMP)::int, "
                 << "last_updated_by = '" << escapeSQLChars(last_updated_by) << "', "
                 << "totp_key = '" << escapeSQLChars(totp_key) << "', "
-                << "scram_record = '" << escapeSQLChars(scram_record) << "' " << queryCondition
+                << "scram_record = '" << escapeSQLChars(scram_record) << "', "
+                << "nickname = '" << escapeSQLChars(nickname) << "' " << queryCondition
                 << id << ends;
 
     if (!SQLDb->Exec(queryString)) {

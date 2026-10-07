@@ -59,6 +59,7 @@ libcservice_la_SOURCES = \
 	mod.cservice/SCANHOSTCommand.cc \
 	mod.cservice/SCANUNAMECommand.cc \
 	mod.cservice/SCANEMAILCommand.cc \
+	mod.cservice/SCANCommand.cc \
 	mod.cservice/SEARCHCommand.cc \
 	mod.cservice/SERVNOTICECommand.cc \
 	mod.cservice/SETCommand.cc \

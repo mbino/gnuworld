@@ -564,6 +564,14 @@ class cservice : public xClient {
      * If "bool" is true, send a notice to the client telling them off. */
     sqlUser* isAuthed(iClient*, bool);
 
+    /* Nick protection: users.nickname reserves a nick for its account. */
+    /* Returns the user name owning this nick, or an empty string. */
+    std::string NickIsRegisteredTo(const std::string&);
+    /* Force a client off its nick with SVSNICK to <nick><4 digits>. False if no free nick. */
+    bool generateNickName(iClient*);
+    /* Rename the client if its nick is reserved for another (or no) account. */
+    void validateNickName(iClient*);
+
     /* Checks to see if this users is forced on this channel */
     unsigned short isForced(sqlChannel*, sqlUser*);
 
